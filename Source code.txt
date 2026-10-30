@@ -1,0 +1,745 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import folium
+from streamlit_folium import st_folium
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import letter
+from folium.plugins import MarkerCluster, HeatMap
+import os
+
+# ---------------------------------------------------
+# App Config
+# ---------------------------------------------------
+st.set_page_config(
+    page_title="🚦 Karnataka Road Safety & Accident Analytics",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ---------------------------------------------------
+#  (Dashboard Look)
+# ---------------------------------------------------
+def add_bg_style(selected_city):
+    st.markdown(
+        f"""
+        <style>
+        /* Main background with light gradient */
+        .stApp {{
+            background: linear-gradient(135deg, #f8f9fa 0%, #eef2f7 50%, #ffffff 100%);
+            font-family: "Segoe UI", sans-serif;
+        }}
+
+        /* Navbar/Header */
+        .main-header {{
+            background: linear-gradient(90deg, #007bff, #0056b3);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            box-shadow: 0px 4px 12px rgba(0,0,0,0.2);
+        }}
+        .main-header h1 {{
+            color: white !important;
+            font-size: 26px;
+            margin: 0;
+        }}
+        .main-header h3 {{
+            color: #ffeb3b;
+            margin-top: 8px;
+            font-size: 20px;
+        }}
+
+        /* Sidebar styling */
+        section[data-testid="stSidebar"] {{
+            background: #f0f0f0 !important; /* default light grey */
+            color: #333 !important;
+            border-right: 2px solid #ccc;
+        }}
+        section[data-testid="stSidebar"] * {{
+            color: #333 !important;
+            font-weight: 500;
+        }}
+
+        /* Highlighted sidebar when a city is selected */
+        {"section[data-testid='stSidebar'] { background: #e9ecef !important; }" if selected_city != "All Karnataka" else ""}
+
+        /* Headers */
+        h1, h2, h3, h4 {{
+            color: #212529;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }}
+
+        /* Card-like containers */
+        .stMarkdown, .stDataFrame, .stPlotlyChart, .stDownloadButton, .stButton>button {{
+            background-color: #ffffff !important;
+            border-radius: 12px;
+            padding: 14px;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.08);
+        }}
+
+        /* Buttons */
+        .stButton>button, .stDownloadButton>button {{
+            background: linear-gradient(90deg, #007bff, #0056b3);
+            color: white;
+            border-radius: 6px;
+            padding: 10px 22px;
+            border: none;
+            font-weight: 500;
+        }}
+        .stButton>button:hover, .stDownloadButton>button:hover {{
+            background: linear-gradient(90deg, #0056b3, #003d80);
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ---------------------------------------------------
+# Clean Professional Login Page
+# ---------------------------------------------------
+USERNAME = "admin"
+PASSWORD = "1234"
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    # CSS Styling
+    st.markdown("""
+        <style>
+        body, .stApp {
+            background-color: #f5f7fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .login-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 90vh;
+        }
+
+        .login-box {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 40px 50px;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .login-box h1 {
+            font-size: 26px;
+            color: #222;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+
+        .stTextInput > div > div > input {
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        .stButton>button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            background: #0066cc;
+            color: white;
+            font-weight: 600;
+            border: none;
+        }
+
+        .stButton>button:hover {
+            background: #004a99;
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 13px;
+            color: #888;
+        }
+
+        .footer a {
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # HTML Layout
+    st.markdown("""
+        <div class="login-container">
+            <div class="login-box">
+                <h1>🚦 Karnataka Accident Dashboard</h1>
+                <p class="subtitle">Login to access accident hotspot analysis</p>
+    """, unsafe_allow_html=True)
+
+    with st.form("login_form"):
+        username = st.text_input("👤 Username")
+        password = st.text_input("🔒 Password", type="password")
+        submit = st.form_submit_button("Login")
+
+    if submit:
+        if username == USERNAME and password == PASSWORD:
+            st.session_state.logged_in = True
+            st.success("✅ Login successful! Redirecting...")
+            st.rerun()
+        else:
+            st.error("❌ Invalid username or password.")
+
+    st.markdown("""
+                <div class="footer">
+                    <p>Need help? <a href="#">Contact Support</a></p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.stop()
+
+
+
+# ---------------------------------------------------
+# Load Data
+# ---------------------------------------------------
+@st.cache_data
+def load_data():
+    df = pd.read_csv("karnataka_accidents_2021_2025.csv")
+    df["date"] = pd.to_datetime(df["date"])
+    df["year"] = df["date"].dt.year
+    df["severity_num"] = df["severity"].astype(int)
+    severity_map = {1: "Minor", 2: "Moderate", 3: "Severe", 4: "Fatal"}
+    df["severity_label"] = df["severity_num"].map(severity_map)
+    return df
+
+data = load_data()
+
+# Sidebar Filters
+st.sidebar.header("🔎 Filters")
+
+years = st.sidebar.multiselect(
+    "Select Year(s)",
+    options=sorted(data["year"].unique()),
+    default=sorted(data["year"].unique())
+)
+
+severities = st.sidebar.multiselect(
+    "Select Severity Level(s)",
+    options=sorted(data["severity_label"].unique()),
+    default=sorted(data["severity_label"].unique())
+)
+
+weathers = st.sidebar.multiselect(
+    "Select Weather",
+    options=sorted(data["weather"].dropna().unique()),
+    default=sorted(data["weather"].dropna().unique())
+)
+
+roads = st.sidebar.multiselect(
+    "Select Road Type",
+    options=sorted(data["road_type"].dropna().unique()),
+    default=sorted(data["road_type"].dropna().unique())
+)
+
+vehicles = st.sidebar.multiselect(
+    "Select Vehicle Type",
+    options=sorted(data["vehicle_type"].dropna().unique()),
+    default=sorted(data["vehicle_type"].dropna().unique())
+)
+
+cities = ["All Karnataka"] + sorted(data["city"].dropna().unique())
+selected_city = st.sidebar.selectbox("Select City", cities)
+
+map_mode = st.sidebar.radio(
+    "Map Visualization",
+    options=["Markers", "Clusters", "Heatmap"],
+    index=0,
+    key="map_mode"
+)
+# Sidebar Logout Button
+if st.session_state.logged_in:
+    st.sidebar.markdown("---")  # Divider
+    st.sidebar.markdown(f"👋 Logged in as: **{USERNAME}**")
+    if st.sidebar.button("🔓 Logout"):
+        st.session_state.logged_in = False
+        st.success("✅ Logged out successfully!")
+        st.rerun()  # Refresh the app to show login page
+
+
+# Apply background with selected city awareness
+add_bg_style(selected_city)
+
+# ---------------------------------------------------
+# Navbar/Header with City Name
+# ---------------------------------------------------
+st.markdown(f"""
+    <div class="main-header">
+        <h1>🚦 Karnataka Road Safety & Accident Analytics (2021–2025)</h1>
+        <h3>📍 City Selected: <span style="color:#ffeb3b;">{selected_city}</span></h3>
+    </div>
+""", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------
+# Apply filters
+# ---------------------------------------------------
+filtered = data[
+    (data["year"].isin(years)) &
+    (data["severity_label"].isin(severities)) &
+    (data["weather"].isin(weathers)) &
+    (data["road_type"].isin(roads)) &
+    (data["vehicle_type"].isin(vehicles))
+]
+
+if selected_city != "All Karnataka":
+    filtered = filtered[filtered["city"] == selected_city]
+    # ---------------------------------------------------
+# KPI Summary Cards
+# ---------------------------------------------------
+if not filtered.empty:
+    total_accidents = len(filtered)
+    fatal_accidents = filtered[filtered["severity_label"] == "Fatal"].shape[0]
+    severe_accidents = filtered[filtered["severity_label"] == "Severe"].shape[0]
+    avg_casualties = filtered["casualties"].mean().round(2)
+    
+    colA, colB, colC, colD = st.columns(4)
+    colA.metric("🚗 Total Accidents", f"{total_accidents:,}")
+    colB.metric("💀 Fatal Accidents", f"{fatal_accidents:,}")
+    colC.metric("⚠ Severe Accidents", f"{severe_accidents:,}")
+    colD.metric("🏥 Avg. Casualties", f"{avg_casualties}")
+
+
+# ---------------------------------------------------
+# Yearly Accident Trend
+# ---------------------------------------------------
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("📈 Accidents per Year")
+    yearly = filtered.groupby("year").size()
+    fig, ax = plt.subplots(figsize=(5, 4))
+    yearly.plot(kind="bar", ax=ax, color="steelblue")
+    ax.set_ylabel("Accidents")
+    st.pyplot(fig)
+
+with col2:
+    st.subheader("⚠ Accidents by Severity")
+    severity_count = filtered["severity_label"].value_counts().sort_index()
+    fig, ax = plt.subplots(figsize=(5, 4))
+    severity_count.plot(kind="bar", ax=ax, color="orange")
+    ax.set_xlabel("Severity")
+    ax.set_ylabel("Count")
+    st.pyplot(fig)
+
+# ---------------------------------------------------
+# Severity Distribution + Reasons
+# ---------------------------------------------------
+col3, col4 = st.columns(2)
+
+with col3:
+    st.subheader("📊 Severity Distribution (%)")
+    severity_percent = filtered["severity_label"].value_counts(normalize=True).sort_index() * 100
+    fig, ax = plt.subplots(figsize=(5, 4))
+    severity_percent.plot(kind="pie", autopct="%.1f%%", ax=ax,
+                          colors=["#99ff99", "#ffcc99", "#ff9966", "#ff3333"])
+    ax.set_ylabel("")
+    st.pyplot(fig)
+
+with col4:
+    st.subheader("🚦 Weather vs Severity")
+    weather_severity = pd.crosstab(filtered["weather"], filtered["severity_label"])
+    fig, ax = plt.subplots(figsize=(5, 4))
+    weather_severity.plot(kind="bar", stacked=True, colormap="coolwarm", ax=ax)
+    ax.set_ylabel("Accidents")
+    st.pyplot(fig)
+
+# ---------------------------------------------------
+# Accident Map with Legend
+# ---------------------------------------------------
+st.subheader("🗺 Accident Hotspot Map")
+if not filtered.empty and filtered[["latitude", "longitude"]].notna().all(axis=1).any():
+    sample_n = min(1000, len(filtered))
+    sample = filtered.sample(sample_n, random_state=42)
+
+    center_lat = sample["latitude"].mean()
+    center_lon = sample["longitude"].mean()
+    zoom = 12 if selected_city != "All Karnataka" else 7
+
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, tiles="OpenStreetMap")
+
+    if map_mode == "Markers":
+        for _, r in sample.iterrows():
+            color = "red" if r["severity_num"] >= 3 else "orange" if r["severity_num"] == 2 else "green"
+            folium.CircleMarker(
+                location=[r["latitude"], r["longitude"]],
+                radius=4,
+                popup=f"{r['city']} | Severity: {r['severity_label']}",
+                color=color,
+                fill=True,
+                fill_opacity=0.7
+            ).add_to(m)
+
+    elif map_mode == "Clusters":
+        cluster = MarkerCluster().add_to(m)
+        for _, r in sample.iterrows():
+            folium.Marker(
+                location=[r["latitude"], r["longitude"]],
+                popup=f"{r['city']} | Severity: {r['severity_label']}"
+            ).add_to(cluster)
+
+    elif map_mode == "Heatmap":
+        heat_data = sample[["latitude", "longitude"]].dropna().values.tolist()
+        HeatMap(heat_data, radius=10, blur=15).add_to(m)
+
+    legend_html = """
+     <div style="
+     position: fixed;
+     bottom: 50px; left: 50px; width: 180px; height: 120px;
+     background-color: white; border:2px solid grey; z-index:9999;
+     font-size:14px; padding: 10px; border-radius: 8px;
+     ">
+     <b>Legend (Severity)</b><br>
+     <i style="background:green; width:12px; height:12px; float:left; margin-right:8px;"></i> Minor (1)<br>
+     <i style="background:orange; width:12px; height:12px; float:left; margin-right:8px;"></i> Moderate (2)<br>
+     <i style="background:red; width:12px; height:12px; float:left; margin-right:8px;"></i> Severe / Fatal (3–4)<br>
+     </div>
+    """
+    m.get_root().html.add_child(folium.Element(legend_html))
+
+    st_folium(m, width=1000, height=500, key="hotspot_map")
+else:
+    st.info("No mappable records for selected filters.")
+    # ---------------------------------------------------
+# Time & Day Analysis
+# ---------------------------------------------------
+st.subheader("🕒 Peak Time & Day of Accidents")
+
+if not filtered.empty:
+    colT1, colT2 = st.columns(2)
+
+    with colT1:
+        st.write("### Accidents by Hour of Day")
+        hourly = filtered["hour"].value_counts().sort_index()
+        fig, ax = plt.subplots(figsize=(6, 4))
+        hourly.plot(kind="bar", color="#17a2b8", ax=ax)
+        ax.set_xlabel("Hour (24h)")
+        ax.set_ylabel("Accidents")
+        st.pyplot(fig)
+
+    with colT2:
+        st.write("### Accidents by Day of Week")
+        day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        daywise = filtered["day_of_week"].value_counts().reindex(day_order)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        daywise.plot(kind="bar", color="#6f42c1", ax=ax)
+        ax.set_xlabel("Day")
+        ax.set_ylabel("Accidents")
+        st.pyplot(fig)
+else:
+    st.info("No records to analyze for time and day trends.")
+
+# ---------------------------------------------------
+# City-Specific Insights (Dynamic)
+# ---------------------------------------------------
+if selected_city != "All Karnataka" and not filtered.empty:
+    st.subheader(f"🏙 Insights for {selected_city}")
+
+    total_city = len(filtered)
+    yearly_city = filtered.groupby("year").size()
+
+    st.write(f"*Total accidents in {selected_city}:* {total_city:,}")
+    st.bar_chart(yearly_city)
+
+    if not filtered.empty:
+        top_weather = filtered["weather"].value_counts().head(3)
+        top_road = filtered["road_type"].value_counts().head(3)
+        top_vehicle = filtered["vehicle_type"].value_counts().head(3)
+
+        st.markdown("### 🌦 Top Weather Conditions")
+        for w, c in top_weather.items():
+            st.write(f"- {w}: {c} accidents")
+
+        st.markdown("### 🛣 Top Road Types")
+        for r, c in top_road.items():
+            st.write(f"- {r}: {c} accidents")
+
+        st.markdown("### 🚗 Top Vehicle Types")
+        for v, c in top_vehicle.items():
+            st.write(f"- {v}: {c} accidents")
+
+        st.markdown("#### 🚧 Suggested Measures")
+        measures = []
+
+        if any("rain" in w.lower() or "fog" in w.lower() for w in top_weather.index):
+            measures.append("⚠ Improve road lighting, drainage, and visibility aids for rain/fog.")
+        if any("clear" in w.lower() for w in top_weather.index):
+            measures.append("🚦 Enforce speed limits during clear weather to reduce speeding accidents.")
+
+        if any("Highway" in r for r in top_road.index):
+            measures.append("🛣 Increase highway patrols and enforce speed checks.")
+        if any("Intersection" in r or "Crossroad" in r for r in top_road.index):
+            measures.append("🚥 Install better traffic signals and roundabouts at intersections.")
+        if any("Rural" in r for r in top_road.index):
+            measures.append("🌾 Improve lighting and signage in rural areas.")
+
+        if any("Two-Wheeler" in v for v in top_vehicle.index):
+            measures.append("🛵 Helmet enforcement and rider safety awareness campaigns.")
+        if any("Truck" in v or "Lorry" in v for v in top_vehicle.index):
+            measures.append("🚛 Stricter checks on overloading and long-haul driver fatigue.")
+        if any("Car" in v for v in top_vehicle.index):
+            measures.append("🚗 Promote seatbelt usage and defensive driving programs.")
+
+        if not measures:
+            measures.append("📢 General traffic law enforcement and awareness campaigns recommended.")
+
+        for m in measures:
+            st.write(m)
+            
+
+
+# ---------------------------------------------------
+# Show Data Table
+# ---------------------------------------------------
+st.subheader("📊 Filtered Accident Data")
+
+if not filtered.empty:
+    st.dataframe(
+        filtered[[
+            "accident_id", "date", "hour", "day_of_week",
+            "city", "district", "severity_label",
+            "weather", "road_type", "vehicle_type",
+            "casualties", "is_fatal"
+        ]].sort_values("date"),
+        use_container_width=True,
+        height=400
+    )
+else:
+    st.info("No records match the selected filters.")
+
+# ---------------------------------------------------
+# Executive Summary
+# ---------------------------------------------------
+st.subheader("📋 Executive Summary")
+st.write(f"""
+- 📈 Years selected: {years}  
+- ⚠ Severity levels: {severities}  
+- 🌦 Weather filters: {weathers}  
+- 🛣 Road types: {roads}  
+- 🚗 Vehicle types: {vehicles}  
+- 🏙 City focus: {selected_city}  
+""")
+
+# ---------------------------------------------------
+# Download Section
+# ---------------------------------------------------
+st.subheader("📥 Download Reports")
+
+csv = filtered.to_csv(index=False).encode("utf-8")
+st.download_button(
+    label="⬇ Download Filtered Data (CSV)",
+    data=csv,
+    file_name=f"accidents_{selected_city.replace(' ', '_')}.csv",
+    mime="text/csv",
+    key="download_csv"
+)
+
+def generate_pdf():
+    doc = SimpleDocTemplate("executive_summary.pdf", pagesize=letter)
+    styles = getSampleStyleSheet()
+    flow = []
+
+    # Title
+    flow.append(Paragraph("Executive Summary - Karnataka Road Safety & Accident Analytics", styles["Heading1"]))
+    flow.append(Spacer(1, 12))
+
+    # Filters info
+    flow.append(Paragraph(f"City Selected: {selected_city}", styles["Heading2"]))
+    flow.append(Paragraph(f"Years Analyzed: {', '.join(map(str, years))}", styles["Normal"]))
+    flow.append(Paragraph(f"Severity Levels: {', '.join(severities)}", styles["Normal"]))
+    flow.append(Paragraph(f"Weather Filter: {', '.join(weathers)}", styles["Normal"]))
+    flow.append(Paragraph(f"Road Types: {', '.join(roads)}", styles["Normal"]))
+    flow.append(Paragraph(f"Vehicle Types: {', '.join(vehicles)}", styles["Normal"]))
+    flow.append(Spacer(1, 12))
+
+    # Key statistics
+    total_accidents = len(filtered)
+    fatal_accidents = filtered[filtered["severity_label"] == "Fatal"].shape[0]
+    severe_accidents = filtered[filtered["severity_label"] == "Severe"].shape[0]
+    avg_casualties = filtered["casualties"].mean().round(2)
+
+    flow.append(Paragraph("📊 Key Statistics", styles["Heading2"]))
+    flow.append(Paragraph(f"- Total Accidents: {total_accidents}", styles["Normal"]))
+    flow.append(Paragraph(f"- Fatal Accidents: {fatal_accidents}", styles["Normal"]))
+    flow.append(Paragraph(f"- Severe Accidents: {severe_accidents}", styles["Normal"]))
+    flow.append(Paragraph(f"- Average Casualties per Accident: {avg_casualties}", styles["Normal"]))
+    flow.append(Spacer(1, 12))
+
+    # Yearly trend
+    flow.append(Paragraph("📈 Yearly Accident Trend", styles["Heading2"]))
+    yearly_summary = filtered.groupby("year").size()
+    for yr, count in yearly_summary.items():
+        flow.append(Paragraph(f"- {yr}: {count} accidents", styles["Normal"]))
+    flow.append(Spacer(1, 12))
+
+    # Top weather, road, vehicle
+    flow.append(Paragraph("🌦 Top Weather Conditions", styles["Heading2"]))
+    top_weather = filtered["weather"].value_counts().head(3)
+    for w, c in top_weather.items():
+        flow.append(Paragraph(f"- {w}: {c} accidents", styles["Normal"]))
+    flow.append(Spacer(1, 6))
+
+    flow.append(Paragraph("🛣 Top Road Types", styles["Heading2"]))
+    top_road = filtered["road_type"].value_counts().head(3)
+    for r, c in top_road.items():
+        flow.append(Paragraph(f"- {r}: {c} accidents", styles["Normal"]))
+    flow.append(Spacer(1, 6))
+
+    flow.append(Paragraph("🚗 Top Vehicle Types", styles["Heading2"]))
+    top_vehicle = filtered["vehicle_type"].value_counts().head(3)
+    for v, c in top_vehicle.items():
+        flow.append(Paragraph(f"- {v}: {c} accidents", styles["Normal"]))
+    flow.append(Spacer(1, 12))
+
+    # Suggested measures
+    flow.append(Paragraph("🚧 Suggested Safety Measures", styles["Heading2"]))
+    measures = []
+
+    if any("rain" in w.lower() or "fog" in w.lower() for w in top_weather.index):
+        measures.append("⚠ Improve road lighting, drainage, and visibility aids for rain/fog.")
+    if any("clear" in w.lower() for w in top_weather.index):
+        measures.append("🚦 Enforce speed limits during clear weather to reduce speeding accidents.")
+
+    if any("Highway" in r for r in top_road.index):
+        measures.append("🛣 Increase highway patrols and enforce speed checks.")
+    if any("Intersection" in r or "Crossroad" in r for r in top_road.index):
+        measures.append("🚥 Install better traffic signals and roundabouts at intersections.")
+    if any("Rural" in r for r in top_road.index):
+        measures.append("🌾 Improve lighting and signage in rural areas.")
+
+    if any("Two-Wheeler" in v for v in top_vehicle.index):
+        measures.append("🛵 Helmet enforcement and rider safety awareness campaigns.")
+    if any("Truck" in v or "Lorry" in v for v in top_vehicle.index):
+        measures.append("🚛 Stricter checks on overloading and long-haul driver fatigue.")
+    if any("Car" in v for v in top_vehicle.index):
+        measures.append("🚗 Promote seatbelt usage and defensive driving programs.")
+
+    if not measures:
+        measures.append("📢 General traffic law enforcement and awareness campaigns recommended.")
+
+    for m in measures:
+        flow.append(Paragraph(f"- {m}", styles["Normal"]))
+
+    # Build PDF
+    doc.build(flow)
+
+
+if st.button("📑 Generate PDF Report"):
+    generate_pdf()
+    st.success("✅ PDF Generated! Scroll down to download.")
+
+if os.path.exists("executive_summary.pdf"):
+    with open("executive_summary.pdf", "rb") as pdf_file:
+        st.download_button(
+            label="⬇ Download Executive Summary (PDF)",
+            data=pdf_file,
+            file_name="executive_summary.pdf",
+            mime="application/pdf",
+            key="download_pdf"
+        )
+        # ---------------------------------------------------
+# ---------------------------------------------------
+# Comparative Analysis
+# ---------------------------------------------------
+st.subheader("🏙 City Comparison (2021–2025)")
+
+st.markdown("""
+This section provides a comparative overview of road accident severity levels across different Karnataka cities 
+for the years **2021–2025**. It helps identify which cities experience more fatal or severe accidents, allowing 
+authorities to prioritize safety measures and resource allocation effectively.
+""")
+
+cities_compare = st.multiselect(
+    "Select Cities to Compare",
+    options=sorted(data["city"].dropna().unique()),
+    default=["Bengaluru", "Mysuru"] if "Bengaluru" in data["city"].values else sorted(data["city"].dropna().unique())[:2]
+)
+
+if len(cities_compare) >= 2:
+    comp_data = data[data["city"].isin(cities_compare)]
+    comp_summary = comp_data.groupby("city")["severity_label"].value_counts().unstack().fillna(0)
+
+    st.write("### 📊 Accidents by Severity (2021–2025)")
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    comp_summary.plot(kind="bar", stacked=True, ax=ax, colormap="tab10")
+    ax.set_ylabel("Accidents")
+    ax.set_xlabel("City")
+    ax.set_title("Accidents by Severity (2021–2025)", fontsize=12)
+    st.pyplot(fig)
+
+    st.markdown("""
+    **Interpretation:**  
+    - The stacked bars represent the total number of accidents in each city categorized by severity (Fatal, Severe, Minor).  
+    - A higher proportion of red or orange sections indicates more severe cases.  
+    - This visual helps stakeholders quickly assess which cities have higher safety risks and where interventions are needed most.
+    """)
+else:
+    st.info("Select at least two cities to compare.")
+
+
+# ---------------------------------------------------
+# Future Accident Prediction (Simple Trend Forecast)
+# ---------------------------------------------------
+from sklearn.linear_model import LinearRegression
+import numpy as np
+
+st.subheader("📈 Future Accident Prediction (Simple Trend Forecast)")
+
+if not filtered.empty:
+    if "year" in filtered.columns:
+        yearly_trend = filtered.groupby("year").size().reset_index(name="accidents")
+        X = yearly_trend["year"].values.reshape(-1, 1)
+        y = yearly_trend["accidents"].values
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        next_year = yearly_trend["year"].max() + 1
+        y_pred_next = model.predict([[next_year]])[0]
+        change_percent = ((y_pred_next - y[-1]) / y[-1]) * 100
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(yearly_trend["year"], y, marker="o", label="Historical Data")
+        ax.plot([yearly_trend["year"].max(), next_year], [y[-1], y_pred_next], "--o", color="red", label="Predicted")
+        ax.set_xlabel("Year")
+        ax.set_ylabel("Accidents")
+        ax.set_title("Accident Trend and Prediction")
+        ax.legend()
+        st.pyplot(fig)
+
+        if change_percent > 0:
+            st.success(f"🚗 Predicted {next_year}: {int(y_pred_next)} accidents (+{change_percent:.2f}% increase)")
+        else:
+            st.info(f"🚗 Predicted {next_year}: {int(y_pred_next)} accidents ({change_percent:.2f}% decrease)")
+    else:
+        st.warning("Year column not found for prediction.")
+else:
+    st.info("No data available for prediction.")
